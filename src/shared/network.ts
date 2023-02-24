@@ -10,7 +10,7 @@ interface ServerFunctions {
 interface ClientEvents {
 	updateData: (data: string) => void; // Using this because Flamework's Guards can be unreliable with large tables
 	updateMoney: (amount: number) => void;
-	updateStats: (stats: { State: string; Message: string }) => void;
+	updateStats: (Message: string) => void;
 }
 
 interface ClientFunctions {}

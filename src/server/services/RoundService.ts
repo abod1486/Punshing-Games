@@ -10,10 +10,6 @@ const MapFolders = ServerStorage.WaitForChild("Maps")?.GetChildren();
 @Service({})
 export class RoundService implements OnStart {
 	private _trove = new Trove();
-	private GameState = {
-		State: "Waiting for Players",
-		Message: "",
-	};
 
 	onStart() {
 		function resetPlayers() {
@@ -44,26 +40,25 @@ export class RoundService implements OnStart {
 		});
 	}
 
-	private _waitForPlayers() {
+	private _sendStats(message: string) {
 		for (const player of Players.GetPlayers()) {
-			Events.updateStats.fire(
-				player,
-				(this.GameState = {
-					State: "Waiting",
-					Message: "Waiting for Players",
-				}),
-			);
+			Events.updateStats(player, message);
 		}
+	}
 
+	private _waitForPlayers() {
 		const enoughPlayers = new Signal();
 
 		let count = 0;
-		function updateCount() {
+		const updateCount = () => {
 			count = Players.GetPlayers().size();
-			if (count > 1 || RunService.IsStudio()) {
+			if (count > 1) {
+				//|| RunService.IsStudio()
 				enoughPlayers.Fire();
+			} else {
+				this._sendStats("Waiting for players");
 			}
-		}
+		};
 
 		Players.PlayerAdded.Connect(updateCount);
 		Players.PlayerRemoving.Connect(updateCount);
@@ -74,15 +69,7 @@ export class RoundService implements OnStart {
 
 	private _intermission() {
 		for (let timer = GAME_SETTINGS.INTERMISSION_TIME - 1; timer >= 0; timer--) {
-			for (const player of Players.GetPlayers()) {
-				Events.updateStats.fire(
-					player,
-					(this.GameState = {
-						State: "Intermission",
-						Message: `Intermission: ${timer}`,
-					}),
-				);
-			}
+			this._sendStats(`Intermission: ${timer}`);
 
 			task.wait(1);
 		}
@@ -91,7 +78,6 @@ export class RoundService implements OnStart {
 	private _begin() {
 		function random(): [Model, CFrame] {
 			const randomMap = MapFolders[math.random(0, MapFolders.size())];
-			print(randomMap);
 			if (!randomMap) {
 				return random();
 			}
@@ -137,69 +123,48 @@ export class RoundService implements OnStart {
 	}
 
 	private _telrportPlayer(player: Player, cframe: CFrame) {
-		const humanoidRootPart = player.Character?.FindFirstChild("HumanoidRootPart");
-		if (humanoidRootPart?.IsA("BasePart")) {
-			humanoidRootPart.CFrame = cframe;
-		}
+		const humanoidRootPart = player.Character?.FindFirstChild("HumanoidRootPart") as BasePart;
+
+		humanoidRootPart.CFrame = cframe;
 	}
 
 	private _watchPlayer(player: Player) {
 		const humanoid = player.Character?.FindFirstChild("Humanoid");
-		const lobbyTeam = Teams?.FindFirstChild("Lobby");
+		const lobbyTeam = Teams?.FindFirstChild("Lobby") as Team;
 
 		if (!humanoid?.IsA("Humanoid")) {
 			return;
 		}
 
 		humanoid.Died.Connect(() => {
-			if (lobbyTeam?.IsA("Team")) {
-				player.Team = lobbyTeam;
-			}
+			player.Team = lobbyTeam;
 		});
 	}
 
 	private _yieldUntilFinished() {
 		for (let timer = GAME_SETTINGS.ROUND_TIME - 1; timer >= 0; timer--) {
-			for (const player of Players.GetPlayers()) {
-				Events.updateStats.fire(
-					player,
-					(this.GameState = {
-						State: "Fight",
-						Message: `Fight, Round Time: ${timer}`,
-					}),
-				);
-			}
+			this._sendStats(`Fight, RoundTime: ${timer}`);
 
 			task.wait(1);
 
-			const inGAmeTeam = Teams?.FindFirstChild("Lobby");
-			if (inGAmeTeam?.IsA("Team")) {
-				const numTeam = inGAmeTeam.GetPlayers().size();
-				if (numTeam < 1 && !RunService.IsStudio()) {
-					break;
-				}
+			const inGAmeTeam = Teams?.FindFirstChild("Game") as Team;
+
+			const numTeam = inGAmeTeam.GetPlayers().size();
+			if (numTeam < 1 && !RunService.IsStudio()) {
+				break;
 			}
 		}
 	}
 
 	private _end() {
-		const inGAmeTeam = Teams?.FindFirstChild("Lobby");
-		if (inGAmeTeam?.IsA("Team")) {
-			const winner = inGAmeTeam.GetPlayers()[0];
-			for (let index = 0; index < GAME_SETTINGS.END_TIME; index++) {
-				for (const player of Players.GetPlayers()) {
-					Events.updateStats.fire(
-						player,
-						(this.GameState = {
-							State: `Winner`,
-							Message: `Winner is ${winner}`,
-						}),
-					);
-				}
+		const inGAmeTeam = Teams?.FindFirstChild("Game") as Team;
 
-				task.wait(1);
-			}
-			this._trove.clean();
+		const winner = inGAmeTeam.GetPlayers()[0];
+		for (let index = 0; index < GAME_SETTINGS.END_TIME; index++) {
+			this._sendStats(`Winner is ${winner}`);
+
+			task.wait(1);
 		}
+		this._trove.clean();
 	}
 }
